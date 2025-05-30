@@ -36,7 +36,7 @@ tripo-mcp/
 ## 安装
 ```bash
 git clone https://github.com/lxy2109/tripo-mcp.git
-cd tripo-mcp
+cd src
 pip install -r requirements.txt
 ```
 
