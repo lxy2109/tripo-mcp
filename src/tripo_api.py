@@ -21,17 +21,44 @@ async def text_to_model(data: TextToModelRequest) -> Dict[str, Any]:
         return resp.json()
 
 async def image_to_model(data: ImageToModelRequest) -> Dict[str, Any]:
+    # 互斥校验：file_path、file_token、url、object 只能有一个
+    input_count = sum([bool(data.file_path), bool(data.file_token), bool(data.url), bool(data.object)])
+    if input_count != 1:
+        return {"code": 2003, "msg": "Exactly one of file_path, file_token, url, object must be provided."}
+    payload = data.model_dump(exclude_none=True)
+    payload["type"] = "image_to_model"
+    # 本地文件优先，且必须真实存在
+    if data.file_path and os.path.isfile(data.file_path):
+        async with httpx.AsyncClient() as client:
+            with open(data.file_path, "rb") as f:
+                files = {"file": (os.path.basename(data.file_path), f, f"image/{data.file_type or 'jpeg'}")}
+                upload_resp = await client.post(f"{BASE_URL}/upload", headers=HEADERS, files=files)
+            upload_data = upload_resp.json()
+            file_token = upload_data.get("data", {}).get("image_token")
+            payload["file"] = {"type": data.file_type or "jpeg", "file_token": file_token}
+            payload.pop("file_path", None)
+            payload.pop("file_type", None)
+            payload.pop("url", None)
+            payload.pop("object", None)
+    elif data.file_token:
+        payload["file"] = {"type": data.file_type or "jpeg", "file_token": data.file_token}
+        payload.pop("file_path", None)
+        payload.pop("file_type", None)
+        payload.pop("url", None)
+        payload.pop("object", None)
+    elif data.url:
+        payload["file"] = {"type": data.file_type or "jpeg", "url": data.url}
+        payload.pop("file_path", None)
+        payload.pop("file_type", None)
+        payload.pop("file_token", None)
+        payload.pop("object", None)
+    elif data.object:
+        payload["file"] = {"type": data.file_type or "jpeg", "object": data.object}
+        payload.pop("file_path", None)
+        payload.pop("file_type", None)
+        payload.pop("file_token", None)
+        payload.pop("url", None)
     async with httpx.AsyncClient() as client:
-        with open(data.file_path, "rb") as f:
-            files = {"file": (os.path.basename(data.file_path), f, f"image/{data.file_type}")}
-            upload_resp = await client.post(f"{BASE_URL}/upload", headers=HEADERS, files=files)
-        upload_data = upload_resp.json()
-        file_token = upload_data.get("data", {}).get("image_token")
-        payload = data.model_dump(exclude_none=True)
-        payload["type"] = "image_to_model"
-        payload["file"] = {"type": data.file_type, "file_token": file_token}
-        del payload["file_path"]
-        del payload["file_type"]
         resp = await client.post(f"{BASE_URL}/task", headers=HEADERS, json=payload)
         return resp.json()
 
@@ -66,6 +93,8 @@ async def animate_prerigcheck(data: AnimatePrerigcheckRequest) -> Dict[str, Any]
 async def animate_rig(data: AnimateRigRequest) -> Dict[str, Any]:
     payload = data.model_dump(exclude_none=True)
     payload["type"] = "animate_rig"
+    if "out_format" in payload and payload["out_format"] not in ["glb", "fbx"]:
+        return {"code": 2002, "msg": "The out_format is unsupported."}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{BASE_URL}/task", headers=HEADERS, json=payload)
         return resp.json()
@@ -73,6 +102,14 @@ async def animate_rig(data: AnimateRigRequest) -> Dict[str, Any]:
 async def animate_retarget(data: AnimateRetargetRequest) -> Dict[str, Any]:
     payload = data.model_dump(exclude_none=True)
     payload["type"] = "animate_retarget"
+    if "out_format" in payload and payload["out_format"] not in ["glb", "fbx"]:
+        return {"code": 2002, "msg": "The out_format is unsupported."}
+    valid_animations = [
+        "preset:idle", "preset:walk", "preset:climb", "preset:jump", "preset:run",
+        "preset:slash", "preset:shoot", "preset:hurt", "preset:fall", "preset:turn"
+    ]
+    if payload.get("animation") not in valid_animations:
+        return {"code": 2002, "msg": "The animation is unsupported."}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{BASE_URL}/task", headers=HEADERS, json=payload)
         return resp.json()
@@ -80,6 +117,8 @@ async def animate_retarget(data: AnimateRetargetRequest) -> Dict[str, Any]:
 async def stylize_model(data: StylizeModelRequest) -> Dict[str, Any]:
     payload = data.model_dump(exclude_none=True)
     payload["type"] = "stylize_model"
+    if payload.get("style") not in ["lego", "voxel", "voronoi", "minecraft"]:
+        return {"code": 2002, "msg": "The style is unsupported."}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{BASE_URL}/task", headers=HEADERS, json=payload)
         return resp.json()
@@ -87,6 +126,8 @@ async def stylize_model(data: StylizeModelRequest) -> Dict[str, Any]:
 async def convert_model(data: ConvertModelRequest) -> Dict[str, Any]:
     payload = data.model_dump(exclude_none=True)
     payload["type"] = "convert_model"
+    if payload.get("format") not in ["GLTF", "USDZ", "FBX", "OBJ", "STL", "3MF"]:
+        return {"code": 2002, "msg": "The format is unsupported."}
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{BASE_URL}/task", headers=HEADERS, json=payload)
         return resp.json()
@@ -105,7 +146,17 @@ async def upload_image(data: UploadImageRequest) -> Dict[str, Any]:
 
 async def get_balance() -> Dict[str, Any]:
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{BASE_URL}/user/balance", headers=HEADERS)
-        return resp.json()
-
-# 你可以继续扩展：上传、动画、后处理等API 
+        try:
+            resp = await client.get(f"{BASE_URL}/user/balance", headers=HEADERS)
+            result = resp.json()
+            if resp.status_code == 200 and isinstance(result, dict):
+                if "code" in result and "data" in result:
+                    return result
+                elif "balance" in result and "frozen" in result:
+                    return {"code": 0, "data": {"balance": result["balance"], "frozen": result["frozen"]}}
+                else:
+                    return {"code": 0, "data": result}
+            else:
+                return {"code": 1001, "msg": "Fatal error on server side", "http_status": resp.status_code}
+        except Exception as e:
+            return {"code": 1001, "msg": f"Fatal error: {str(e)}"}

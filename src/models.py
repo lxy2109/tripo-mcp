@@ -16,8 +16,11 @@ class TextToModelRequest(BaseModel):
     quad: Optional[bool] = Field(False, description="是否输出四边面网格。默认False。若为True且未设置face_limit，默认10000。仅v2.0及以上版本有效。")
 
 class ImageToModelRequest(BaseModel):
-    file_path: str = Field(..., description="本地图片文件路径，支持webp、jpeg、png。最大20MB。")
-    file_type: str = Field("jpeg", description="图片文件类型，推荐与实际文件一致。")
+    file_path: Optional[str] = Field(None, description="本地图片文件路径，支持webp、jpeg、png。最大20MB。与url、file_token、object互斥。")
+    file_type: Optional[str] = Field("jpeg", description="图片文件类型，推荐与实际文件一致。")
+    url: Optional[str] = Field(None, description="图片直链URL，支持jpeg/png，最大20MB。与file_path、file_token、object互斥。")
+    file_token: Optional[str] = Field(None, description="图片上传后返回的token。与file_path、url、object互斥。")
+    object: Optional[dict] = Field(None, description="STS上传返回的对象信息。与file_path、url、file_token互斥。")
     model_version: Optional[str] = Field("v2.5-20250123", description="模型版本，同TextToModelRequest。")
     face_limit: Optional[int] = Field(None, description="输出模型面数上限。未设置时自适应。仅v2.0及以上版本有效。")
     texture: Optional[bool] = Field(True, description="是否生成贴图。默认True。仅v2.0及以上版本有效。")
@@ -25,8 +28,10 @@ class ImageToModelRequest(BaseModel):
     model_seed: Optional[int] = Field(None, description="模型生成随机种子。仅v2.0及以上版本有效。")
     texture_seed: Optional[int] = Field(None, description="贴图生成随机种子。仅v2.0及以上版本有效。")
     texture_quality: Optional[str] = Field("standard", description="贴图质量，可选：standard, detailed。默认standard。仅v2.0及以上版本有效。")
+    texture_alignment: Optional[str] = Field("original_image", description="贴图对齐方式，可选original_image/geometry。默认original_image。")
     style: Optional[str] = Field(None, description="风格化类型，详见官方文档。")
     auto_size: Optional[bool] = Field(False, description="是否自动缩放到真实世界尺寸。默认False。仅v2.0及以上版本有效。")
+    orientation: Optional[str] = Field("default", description="模型朝向，可选align_image/default。默认default。")
     quad: Optional[bool] = Field(False, description="是否输出四边面网格。默认False。仅v2.0及以上版本有效。")
 
 class MultiviewToModelRequest(BaseModel):
