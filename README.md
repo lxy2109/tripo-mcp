@@ -55,7 +55,7 @@ pip install -r requirements.txt
     "tripo-mcp": {
       "command": "python",
       "args": [
-        "src/main.py"
+        "你的绝对路径/src/main.py"
       ],
       "env": {
         "TRIPO_API_KEY": "你的Tripo3D_API_Key"
